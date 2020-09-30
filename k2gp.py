@@ -8,6 +8,18 @@ from .gp_models import (NonPositiveDefiniteError, LAPACKError,
                         PriorInitialisationError, OversamplingPopulationError)
 
 
+# TODO: The whole procedure doesn't work as expected post-update.
+# Need to split into N_opt and N_det or whatever the other one is.
+# Then have the keywords set the two. Also make sure that on
+# long_process=True, the proc_kw default is switched to a long version.
+
+# TODO: basically, do not assume that this is working as expected at
+# the moment. Needs to be looked at in detail. Performance on both
+# long and short cadence is variable and generally atrocious.
+
+# TODO: try and get a CDPP of 350 on the long cadence, see how low I
+# can get on the short cadence
+
 # High-level usage functions
 # --------------------------
 
@@ -35,6 +47,9 @@ def detrend_lcf_classic(lcf, proc_kw='ideal', ramp=False, kernel_keyword=None,
         lcf, hp, cdpp
     """
 
+    if long_process and proc_kw == "ideal":
+        proc_kw = "long"
+
     # Parse arguments
     rfd_kwargs = parse_process_keywords(proc_kw, rfd_kwargs)
 
@@ -47,6 +62,9 @@ def detrend_lcf_classic(lcf, proc_kw='ideal', ramp=False, kernel_keyword=None,
     else:
         k2_detrender = gp_models.LLCNoiseModel3D(
             lcf, k2_kernel, additional_model='ramp' if ramp else None)
+
+        # Need to override the n_samples in rfd_kwargs
+        # pro/
 
     # TODO
     try:
@@ -78,6 +96,9 @@ def detrend_lcf_quasiperiodic(lcf, period=None, proc_kw='ideal',
     Returns:
         lcf, hp, cdpp
     """
+
+    if long_process and proc_kw == "ideal":
+        proc_kw = "long"
 
     # Parse arguments
     rfd_kwargs = parse_process_keywords(proc_kw, rfd_kwargs)
@@ -247,6 +268,15 @@ def parse_process_keywords(proc_kw, rfd_kwargs=None):
             rfd_kwargs['evolve'] = (True, True, True, False, False)
         if 'full_final' not in rfd_kwargs:
             rfd_kwargs['full_final'] = True
+        if 'n_iters' not in rfd_kwargs:
+            rfd_kwargs['n_iters'] = len(rfd_kwargs['ocut'])
+    elif proc_kw in ('long'):
+        if 'n_samples' not in rfd_kwargs:
+            rfd_kwargs['n_samples'] = None
+        if 'ocut' not in rfd_kwargs:
+            rfd_kwargs['ocut'] = (5, 5, 4, 4, 4)
+        if 'full_final' not in rfd_kwargs:
+            rfd_kwargs['full_final'] = False
         if 'n_iters' not in rfd_kwargs:
             rfd_kwargs['n_iters'] = len(rfd_kwargs['ocut'])
     else:
