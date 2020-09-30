@@ -18,25 +18,24 @@ Current version (08/05/18): moving completely to full-lcf treatment.
 """
 
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import stats
 
-from astropy.io import fits
+# from astropy.io import fits
 from astropy.timeseries import LombScargle
 
-from . import gp_models, lc_utils
-# from .gp_utils import ravel_trappist_times
+if not os.environ['HOME'] + '/astro_packages' in sys.path:
+    sys.path.append(os.environ['HOME'] + '/astro_packages')
 
-# Will only work if lcnm package is imported
+from . import gp_models, lc_utils
 from global_variables import HOME_DIR, UB_MANUAL
 
-
-
-
-
-
+# Cleaning quality flags imported from lctools, treated as also
+# belonging to this module.
+from lctools.k2lc.quality_filters import clean_lcf
 
 
 def initialise_lcf(lcf, f_col='f', with_xy=True, pos_suffix=None):
@@ -55,7 +54,7 @@ def initialise_lcf(lcf, f_col='f', with_xy=True, pos_suffix=None):
         lcf (pd.DataFrame)
     """
 
-    if pos_suffix is not None:
+    if pos_suffix is not None and with_xy:
         lcf['x'] = lcf['x' + pos_suffix]
         lcf['y'] = lcf['y' + pos_suffix]
 
@@ -401,12 +400,16 @@ def estimate_sigma(f, n_chunks=10000, chunk_size=8):
         start_idxs = f[:-chunk_size].sample(n_chunks, replace=True).index
     else:
         start_idxs = np.random.choice(
-            np.arange(0, len(f)), n_chunks, replace=True)
+            np.arange(0, len(f) - chunk_size), n_chunks, replace=True)
 
     sigma_list = []
     for index in start_idxs:
         chunk = f[index : index+chunk_size]
-        sigma_list.append(stats.sigmaclip(chunk)[0].std())
+        # BUG
+        try:
+            sigma_list.append(stats.sigmaclip(chunk)[0].std())
+        except ZeroDivisionError:
+            import pdb; pdb.set_trace()
     sigma = np.percentile(sigma_list, 30)
 
     return sigma
@@ -430,7 +433,7 @@ def get_white_noise(lcf, chunk_size=10):
     red_factor = 1.5
     return 2*np.log(estimate_sigma(lcf.f, chunk_size=chunk_size)/red_factor)
 
-def mask_flares(f, factor=6.0, n_largest=40):
+def mask_flares(f, factor=5.0, n_largest=None):
     """Rough removal of flare-like points.
 
     Use only in the beginning.
@@ -439,21 +442,26 @@ def mask_flares(f, factor=6.0, n_largest=40):
         f (np.array): the flux values
         factor (float=6.0): the factor of sigma to count as a potential
             flare
-        n_largest (int): maximum number of point to remove as potential
+        n_largest (int): maximum number of points to remove as potential
             flares
 
     Returns:
         mask (np.ndarray)
     """
 
-    if isinstance(f, (pd.DataFrame, pd.Series)):
+    if isinstance(f, pd.Series):
         f = f.values
+    elif isinstance(f, pd.DataFrame):
+        raise ValueError("Flux needs to be given in 1D form.")
 
-    n_largest = 40
+    if n_largest is None and len(f) < 4000:
+        n_largest = 40
+    elif n_largest is None:
+        n_largest = int(len(f) / 100)
 
-    rms = estimate_sigma(
-        f, n_chunks=5, chunk_size=min(2500, len(f)-3))
-    mask = f > (np.nanmedian(f) + 6*rms)
+    sig = estimate_sigma(
+        f, n_chunks=5, chunk_size=min(1000, len(f)//2))
+    mask = f > (np.nanmedian(f) + factor*sig)
 
     if np.sum(mask) > n_largest:
         largest_idx = np.argsort(-f)[:n_largest]
