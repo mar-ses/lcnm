@@ -10,7 +10,7 @@ python 3, uses the george package (https://george.readthedocs.io/en/latest/)
 
 ## Usage
 
-Interface is not developed yet. `/lcnm/k2gp.py` contains the main functions that perform the detrending automatically. For a lightcurve in the form a `pandas.DataFrame`, with the columns 't', 'x', 'y', 'f' referring to the time, x-position, y-position and total flux/brightness of a star respectively:
+Interface is not fully developed yet. `/lcnm/k2gp.py` contains the main functions that perform the detrending automatically (not only for K2 data). For a lightcurve in the form of a `pandas.DataFrame` with the columns 't', 'x', 'y', 'f' referring to the time, x-position, y-position and total flux/brightness of a star respectively:
 
 ```python
 from lcnm import k2gp
