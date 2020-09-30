@@ -44,7 +44,8 @@ NOTE on paradigm:
       by the Kernel object.
 """
 
-from collections import OrderedDict
+import warnings
+# from collections import OrderedDict
 
 import numpy as np
 from scipy.stats import truncnorm, norm
@@ -92,11 +93,6 @@ classic_initial_hp = [-13.0, -12.86, -3.47, -4.34, -12.28, 0.32]
 #
 #	hp_var = ln(var) = ln(1 / (2eta)) = -ln(2) - ln(eta)
 
-# TODO: most important; figure out what to do about the white noise
-# perhaps it shouldn't be a parameter in here at all.
-
-# TODO remove white noise as a kernel parameter totally
-
 # Structure, to be extended to all
 # --------------------------------
 # To be the same as the model_objects, but no frozen mask or values
@@ -108,8 +104,8 @@ classic_initial_hp = [-13.0, -12.86, -3.47, -4.34, -12.28, 0.32]
 #
 
 class LCKernel(object):
-    """Better kernel.
-    
+    """Base kernel class for lcnm detrending objects.
+
     NOTE: base interface doesn't know number of X dimensions.
 
     NOTE: .kernel object doesn't have bounds implemented properly.
@@ -121,7 +117,7 @@ class LCKernel(object):
     def __init__(self, kernel, parameter_names, default_values,
                  keyword=None, bound_dict=None):
         """Performs the standard initialisation routines.
-        
+
         NOTE: doesn't set the kernel. The kernel needs to be created
         after the bounds are set, which means in the child object's
         __init__ function, after the bounds and names have been
@@ -156,18 +152,51 @@ class LCKernel(object):
     def get_parameter_names(self):
         return self.parameter_names
 
-    # def get_parameter_bounds(self):
-    #      return self.bounds
+    # Bounds
+    # ------
+    # bounds is currently a problem. kernel.parameter_bounds belongs to
+    # to the kernel object and seemingly cannot be modified after it's
+    # been created. One cannot change specific elements, for example:
+    # self.kernel.parameter_bounds[0][1] = 0 fails
+    # Therefore, for my prior, I will use a different property,
+    # self.bounds. The prior must only interact with this.
+    #
+    # Check back on: https://github.com/dfm/george/pull/114
+    #
+    # If george implements modifiable bounds, then change it so that
+    # we only refer to self.kernel.parameter_bounds
 
     def get_bound_dict(self):
-        return dict(zip(self.parameter_names, self.kernel.parameter_bounds))
+        """Returns the LCKernel.bounds matched to parameter names.
 
-    def get_parameter_bounds(self):
-        return self.kernel.parameter_bounds
+        NOTE: not george.kernels.parameter_bounds
+        """
+        return dict(zip(self.parameter_names, self.bounds))
 
-    def log_prior(self, parameter_vector):
+    # TODO: find and fix get_parameter_bounds
+    def get_bounds(self):
+        """Returns the LCKernel.bounds.
+
+        NOTE: not george.kernels.parameter_bounds
+        """
+        return self.bounds
+
+    # This should be overridden by each child object with its own
+    # specific way of choosing default bounds.
+    def set_bounds(self, keyword=None, bound_dict=None):
+        """Sets bounds on the parameters."""
+
+        warnings.warn("Using LCKernel.set_bounds. This should have "
+                      "been overridden by a child object. The bounds "
+                      "will be plus-minus infinity (unbounded). This "
+                      "will break things if the parameters are in log "
+                      "form.")
+
+        self.bounds = [[-np.inf, np.inf]]*len(self)
+
+    def log_prior(self, vector):
         """Compute the log_prior of the current parameters.
-        
+
         NOTE: the parameter order absolutely matters, must be the same
         as the order in parameter_names and default_values.
         """
@@ -175,25 +204,20 @@ class LCKernel(object):
 
         #lp_value = 0.0
         #for i in range(len(self)):
-        #	lp_value += self.hpp[self.parameter_names[i]](parameter_vector[i])
+        #	lp_value += self.hpp[self.parameter_names[i]](vector[i])
         #return lp_value
 
-    def grad_log_prior(self, parameter_vector):
+    def grad_log_prior(self, vector):
         """Compute the log_prior of the current parameters."""
         raise NotImplementedError
 
         # grad = 0.0
         # for i in range(len(self)):
-        # 	grad += self.hpp_grad[self.parameter_names[i]](parameter_vector[i])
+        # 	grad += self.hpp_grad[self.parameter_names[i]](vector[i])
         # return grad
 
     def set_hyperpriors(self, keyword=None):
         """Creates a dict of functions as the hpp for each parameter."""
-        raise NotImplementedError
-
-    def set_bounds(self, keyword=None, bound_dict=None):
-        """Sets bounds on the parameters."""
-        self.bounds = None
         raise NotImplementedError
 
 
@@ -204,7 +228,7 @@ class ClassicK2Kernel(LCKernel):
     """Standard K2 kernel for temporal and spatial noise correlation.
     """
 
-    def __init__(self, keyword=None, *args, **kwargs):
+    def __init__(self, keyword=None, **kwargs):
         """Initialises the priors, initial hp values, and kernel."""
 
         # Set up kernel
@@ -224,11 +248,11 @@ class ClassicK2Kernel(LCKernel):
 
         super().__init__(kernel=k_total,
                          parameter_names=('ln_Axy', '2ln_sigx', '2ln_sigy',
-                                           'ln_At', '2ln_sigt'),
+                                          'ln_At', '2ln_sigt'),
                          default_values=(-12.86, -3.47, -4.34,
-                                          -12.28, 2*np.log(default_sigt)),
+                                         -12.28, 2*np.log(default_sigt)),
                          keyword=keyword,
-                         *args, **kwargs)
+                         **kwargs)
 
         self.default_X_cols = ['x', 'y', 't']
 
@@ -452,6 +476,10 @@ class QuasiPeriodicK2Kernel(LCKernel):
         # Mean and std of 2ln_sigt
         self._hpp['2ln_sigt'] = [2*np.log(40), 3.0]
 
+    def grad_log_prior(self, vector):
+        """Compute the log_prior of the current parameters."""
+        raise NotImplementedError
+
 
 # Special kernels
 # ---------------
@@ -462,25 +490,22 @@ class QuasiPeriodic1DKernel(LCKernel):
     #_default_hp = (-13.0, -12.28, 0.36, 1.0, -1.0)
     #_kernel_type = 'quasiperiodic-1D'
 
-    def __init__(self, P=None, *args, **kwargs):
+    def __init__(self, P=None, **kwargs):
         """Initialises the priors, initial hp values, and kernel."""
 
         # Set up kernel
-        # -------------
         k_temporal = 1.0 * kernels.ExpSquaredKernel(metric=1.0, ndim=1) \
-                         * kernels.ExpSine2Kernel(gamma=2,
-                                                   log_period=1,
-                                                   ndim=1)
+            * kernels.ExpSine2Kernel(gamma=2, log_period=1, ndim=1)
 
         if P is None:
             P = 0.5
 
         # NOTE: sigt always starts as multiple of the period
-        super().__init__(kernel=k_temporal,
-                         parameter_names=('ln_At', '2ln_sigt', 'g', 'lnP'),
-                         default_values=(-12.28, 2*np.log(4*P),
-                                           1.0, np.log(P)),
-                         *args, **kwargs)
+        super().__init__(
+            kernel=k_temporal,
+            parameter_names=('ln_At', '2ln_sigt', 'g', 'lnP'),
+            default_values=(-12.28, 2*np.log(4*P), 1.0, np.log(P)),
+            **kwargs)
 
         if not np.isfinite(self.log_prior(self.default_values)):
             raise PriorInitialisationError(
@@ -518,7 +543,7 @@ class QuasiPeriodic1DKernel(LCKernel):
 
     def set_bounds(self, keyword=None, bound_dict=None):
         """Bounds are in *actual* scale; not transformed.
-        
+
         Args:
             keyword: sets different bounds.
                 - high_frequency: lower bound of 0.1 for periods down
@@ -586,11 +611,19 @@ class QuasiPeriodic1DKernel(LCKernel):
         # 		# ln(2) = 0.69314718055994529
         # 		return - np.inf
 
+    def grad_log_prior(self, vector):
+        """Compute the log_prior of the current parameters."""
+        raise NotImplementedError
+
 
 # Matern Kernels
 # --------------
 
 class Matern52K2Kernel(LCKernel):
+    """Matern kernel.
+
+    Quick and dirty for testing purposes.
+    """
 
     def __init__(self, keyword=None, *args, **kwargs):
         """Initialises the priors, initial hp values, and kernel."""
@@ -612,9 +645,9 @@ class Matern52K2Kernel(LCKernel):
 
         super().__init__(kernel=k_total,
                          parameter_names=('ln_Axy', '2ln_sigx', '2ln_sigy',
-                                           'ln_At', '2ln_sigt'),
+                                          'ln_At', '2ln_sigt'),
                          default_values=(-12.86, -3.47, -4.34,
-                                          -12.28, 2*np.log(default_sigt)),
+                                         -12.28, 2*np.log(default_sigt)),
                          keyword=keyword,
                          *args, **kwargs)
 
@@ -683,7 +716,6 @@ class Matern52K2Kernel(LCKernel):
     def set_hyperpriors(self, keyword=None):
         self._hpp = dict()
 
-        # TODO: the priors for sigx and sigt have drastically changed
         # Mean and std of 2ln_sigx
         self._hpp['2ln_sigx'] = [np.log(17), np.log(8.0)]
 
@@ -727,7 +759,7 @@ class PriorInitialisationError(ValueError):
 
         if len(kwargs) > 0:
             message += "\nParsing:\n"
-            for kw, arg in kwargs:
+            for kw, arg in kwargs.items():
                 message += '{}:\t\t{}\n'.format(kw, arg)
                 setattr(self, kw, arg)
 
