@@ -472,15 +472,19 @@ class LCNoiseModel1D(object):
             raise OversamplingPopulationError
 
         # Do this first so it's not part of any subsets
+        # TODO: instead of this, just use the t_flag in ts,
+        # and make sure that ts always has a t_flag when it's set.
         if cut_transits and 't_flag' in ts.columns:
-            ts = ts[~ts.t_flag]
+            transit_mask = ts.t_flag
+        else:
+            transit_mask = np.zeros(len(ts), dtype=bool)
 
         if cut_outliers:
             outlier_mask = self.mask_outliers(ts=ts, **mask_kwargs)
         else:
-            outlier_mask = np.ones(len(ts), dtype=bool)
+            outlier_mask = np.zeros(len(ts), dtype=bool)
 
-        ts_basis = ts.copy()[~outlier_mask]
+        ts_basis = ts.copy()[~outlier_mask & ~transit_mask]
 
         # NOTE: variable ts may have been modified by this point
 
@@ -804,7 +808,7 @@ class LCNoiseModel1D(object):
         else:
             fig.show()
 
-    def calc_cdpp(self, columns='f_detrended', ts=None,
+    def calc_cdpp(self, columns='f_detrended', ts=None, cadence="lc",
                   remove_outliers=False, remove_transits=True):
         """Calculates the CDPP in columns.
 
@@ -834,7 +838,7 @@ class LCNoiseModel1D(object):
 
         cdpps = dict()
         for col in columns:
-            cdpps[col] = lc_utils.calc_cdpp(ts, column=col)
+            cdpps[col] = lc_utils.calc_cdpp(ts, column=col, cadence=cadence)
 
         if len(columns) == 1:
             return cdpps[columns[0]]

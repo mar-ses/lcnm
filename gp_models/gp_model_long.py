@@ -416,6 +416,16 @@ class LLCNoiseModel3D(LCNoiseModel3D):
             ts_basis (pd.DataFrame): also saved to self._ts_basis
         """
 
+        # TODO NOTE - Current important issue: this method does not
+        # flag and save the outliers in the whole light curve if
+        # ty_subset is True. This is a huge deal. First of all, make
+        # sure that when try_subset is False, we save the outlier
+        # flags. Second of all, figure out what to do about this
+        # outlier thing.
+
+        # TODO: additionally perhaps make it so that detrend_lightcurve
+        # also flags outliers (which is easy in fact).
+
         # TODO: temporary to alias vs previous versions
         if 'N' in mask_kwargs:
             N = mask_kwargs.pop('N')
@@ -424,7 +434,10 @@ class LLCNoiseModel3D(LCNoiseModel3D):
         if ts is None:
             ts = self.get_ts()
         if cut_flares:
-            ts = ts[~lc_preparation.mask_flares(ts.f)]
+            flare_mask = lc_preparation.mask_flares(ts.f)
+            # ts = ts[~lc_preparation.mask_flares(ts.f)]
+        else:
+            flare_mask = np.zeros_like(ts.f, dtype=bool)
         if N_opt is None:
             N_opt = self.N_opt
         if N_gp is None:
@@ -444,14 +457,20 @@ class LLCNoiseModel3D(LCNoiseModel3D):
 
         # Do this first so it's not part of any subsets
         if cut_transits and 't_flag' in ts.columns:
-            ts = ts[~ts.t_flag]
+            transit_mask = ts.t_flag
+        else:
+            transit_mask = np.zeros(len(ts), dtype=bool)
 
         if try_subset and cut_outliers:
             ts_basis = pd.DataFrame(columns=ts.columns)
+            # I can do this only because we prevent ts from being saved
+            # when try_subset is true (it gets modified anyway)
+            temp_ts = ts[~transit_mask & ~flare_mask]
 
             while (~ts_basis.o_flag).sum() < (N_opt + N_gp):
                 try:
-                    add_basis = ts.sample(subsize, replace=False)
+                    add_basis = temp_ts[~transit_mask & ~flare_mask].sample(
+                        subsize, replace=False)
                 except ValueError:
                     # means we oversampled
                     # if quiet:
@@ -460,21 +479,21 @@ class LLCNoiseModel3D(LCNoiseModel3D):
                     #                   "than N_opt + N_gp.")
                     if quiet:
                         if len(ts) > 0:
-                            add_basis = ts
+                            add_basis = temp_ts
                         else:
                             break
                     else:
                         raise OversamplingPopulationError
 
                 # Take care not to allow replacement of points
-                ts = ts[~ts.index.isin(add_basis.index)]
+                temp_ts = temp_ts[~temp_ts.index.isin(add_basis.index)]
                 outlier_mask = self.mask_outliers(ts=add_basis, **mask_kwargs)
                 add_basis = add_basis[~outlier_mask]
                 ts_basis = pd.concat(objs=[ts_basis, add_basis],
                                      ignore_index=True)
         elif cut_outliers:
             outlier_mask = self.mask_outliers(ts=ts, **mask_kwargs)
-            ts_basis = ts[~outlier_mask]
+            ts_basis = ts[~outlier_mask & ~transit_mask & ~flare_mask]
         else:
             ts_basis = ts
 
@@ -514,6 +533,8 @@ class LLCNoiseModel3D(LCNoiseModel3D):
         if save:
             self.set_basis(ts_basis)
         if not try_subset and save_o_flag and cut_outliers:
+            # This is only done if the length or the elements of ts
+            # were not modified. try_subset modified the elements.
             self.set_ts(ts.assign(o_flag=outlier_mask))
 
         return ts_basis
@@ -522,24 +543,24 @@ class LLCNoiseModel3D(LCNoiseModel3D):
     # Utilities and internals
     # -----------------------
 
-    def calc_cdpp(self, columns='f_detrended', ts=None,
-                  remove_outliers=False, remove_transits=True):
-        """Calculates the CDPP in columns.
+    # def calc_cdpp(self, columns='f_detrended', ts=None,
+    #               remove_outliers=False, remove_transits=True):
+    #     """Calculates the CDPP in columns.
 
-        Args:
-            columns (tuple/str): which columns to calculate the cdpp
-                for, will return a dictionary unless a single
-                column is specified.
-            ts (pd.DataFrame, optional)
-            remove_outliers (bool, False): masks o_flag values
-            remove_transits (bool, True): masks t_flag values
+    #     Args:
+    #         columns (tuple/str): which columns to calculate the cdpp
+    #             for, will return a dictionary unless a single
+    #             column is specified.
+    #         ts (pd.DataFrame, optional)
+    #         remove_outliers (bool, False): masks o_flag values
+    #         remove_transits (bool, True): masks t_flag values
 
-        Returns:
-            dict() of cdpp's with keys = columns, or a single float
-            if a single column is specified
-        """
-        return None
-        raise NotImplementedError
+    #     Returns:
+    #         dict() of cdpp's with keys = columns, or a single float
+    #         if a single column is specified
+    #     """
+    #     return None
+    #     raise NotImplementedError
 
         # ts = ts if ts is not None else self._ts
         # if remove_outliers:
