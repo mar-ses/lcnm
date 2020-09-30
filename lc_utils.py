@@ -4,7 +4,8 @@ import pandas as pd
 import cdpp
 
 
-def calc_cdpp(lcf, verbose=False, column='f_detrended', raw=True):
+def calc_cdpp(lcf, verbose=False, column='f_detrended', raw=True,
+              cadence="lc"):
     '''
     Calculate the cdpp for the points which are NOT flagged as transits or outliers.
     '''
@@ -17,8 +18,8 @@ def calc_cdpp(lcf, verbose=False, column='f_detrended', raw=True):
     if raw:
         cdpp_value = cdpp.CDPP(lcf[column].values + offset)
     else:
-        lcf = lcf[~lcf.t_flag | ~lcf.o_flag]
-        cdpp_value = cdpp.CDPP(lcf[column].values + offset)
+        lcf = lcf[~lcf.t_flag & ~lcf.o_flag]
+        cdpp_value = cdpp.CDPP(lcf[column].values + offset, cadence=cadence)
 
     if verbose:
         print('\n###--------------------------------------')
