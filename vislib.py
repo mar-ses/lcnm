@@ -31,6 +31,14 @@ def plot_gp_model(lcf, show=True, title=None, flag_outliers=True,
     else:
         lcf_clean = lcf
 
+    # Choose alpha and markersize based on number of points
+    if len(lcf) < 6000:
+        malpha = 0.7
+        msize = 4
+    else:
+        malpha = 0.4
+        msize = 2.5
+
     # Main plotting routine.
     # ----------------------
     fig, ax = plt.subplots(4, sharex=True)
@@ -39,72 +47,76 @@ def plot_gp_model(lcf, show=True, title=None, flag_outliers=True,
     fig.subplots_adjust(hspace=0)
 
     # The pixel position vector
-    ax[0].plot(lcf[tcol], lcf.x, 'r.',
-               lcf[tcol], lcf.y, 'b.',
-               alpha=0.5)
+    ax[0].plot(
+        lcf[tcol], lcf.x, 'r.', lcf[tcol], lcf.y, 'b.',
+        alpha=malpha, markersize=msize)
 
     # The undetrended light curve data points
-    ax[1].plot(lcf_clean[tcol], lcf_clean.f, 'k.', alpha=0.5)
+    ax[1].plot(
+        lcf_clean[tcol], lcf_clean.f, 'k.', alpha=malpha, markersize=msize)
     ax[1].plot(lcf[tcol],
                lcf.f_spatial + lcf.f_temporal + lcf_clean.f_model,
-               'r-', alpha=0.7)
+               'r-', alpha=0.7, linewidth=1.2)
     if flag_outliers:
         ax[1].scatter(lcf.loc[lcf.o_flag, tcol],
                       lcf[lcf.o_flag].f,
                       facecolors='r',
                       edgecolors='face',
                       marker='.',
-                      alpha=0.4)
+                      alpha=malpha-0.15,
+                      s=msize**2)
     if flag_transits:
         ax[1].scatter(lcf.loc[lcf.t_flag, tcol],
                       lcf[lcf.t_flag].f,
                       facecolors='b',
                       edgecolors='face',
                       marker='.',
-                      alpha=0.8,
-                      s=15)
+                      alpha=malpha+0.1,
+                      s=msize**2)
 
     # The lightcurve, detrended from the spatial component
     ax[2].plot(lcf_clean[tcol],
                lcf_clean.f - lcf_clean.f_spatial - lcf_clean.f_model + f_0,
-               'k.', alpha=0.5)
+               'k.', alpha=malpha, markersize=msize)
     ax[2].plot(lcf[tcol], lcf.f_temporal + f_0,
-               'r-', alpha=0.7)
+               'r-', alpha=0.7, linewidth=1.2)
     if flag_outliers:
         ax[2].scatter(lcf.loc[lcf.o_flag, tcol],
                       lcf[lcf.o_flag].f - lcf[lcf.o_flag].f_spatial,
                       facecolors='r',
                       edgecolors='face',
                       marker='.',
-                      alpha=0.2)
+                      alpha=malpha-0.15,
+                      s=msize**2)
     if flag_transits:
         ax[2].scatter(lcf.loc[lcf.t_flag, tcol],
                       lcf[lcf.t_flag].f - lcf[lcf.t_flag].f_spatial,
                       facecolors='b',
                       edgecolors='face',
                       marker='.',
-                      alpha=0.8,
-                      s=15)
+                      alpha=malpha+0.1,
+                      s=msize**2)
 
     # The lightcurve, detrended from all but the white noise
-    ax[3].plot(lcf_clean[tcol],
-               lcf_clean.f_detrended,
-               'k.', alpha=0.5)
+    ax[3].plot(
+        lcf_clean[tcol], lcf_clean.f_detrended, 'k.',
+        alpha=malpha, markersize=msize)
     if flag_outliers:
         ax[3].scatter(lcf.loc[lcf.o_flag, tcol],
                       lcf[lcf.o_flag].f_detrended,
                       facecolors='r',
                       edgecolors='face',
                       marker='.',
-                      alpha=0.4)
+                      alpha=malpha-0.15,
+                      s=msize**2)
     if flag_transits:
         ax[3].scatter(lcf.loc[lcf.t_flag, tcol],
                       lcf[lcf.t_flag].f_detrended,
                       facecolors='b',
                       edgecolors='face',
                       marker='.',
-                      alpha=0.8,
-                      s=15)
+                      alpha=malpha+0.1,
+                      s=msize**2)
     if bin_detrended:
         pass
 
